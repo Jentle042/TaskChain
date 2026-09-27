@@ -392,6 +392,12 @@ impl EscrowContract {
             return Err(Error::InvalidMilestoneStatus);
         }
 
+        // While a dispute is open the escrowed funds are frozen: `release` must be
+        // blocked until the arbitrator resolves the dispute.
+        if milestone.status == MilestoneStatus::Disputed {
+            return Err(Error::InvalidMilestoneStatus);
+        }
+
         if !milestone.client_approved {
             return Err(Error::InsufficientApprovals);
         }
@@ -469,15 +475,19 @@ impl EscrowContract {
 
         let client: Address = env.storage().instance().get(&DataKey::Client).ok_or(Error::NotInitialized)?;
         let freelancer: Address = env.storage().instance().get(&DataKey::Freelancer).ok_or(Error::NotInitialized)?;
+        let arbiter: Address = env.storage().instance().get(&DataKey::Arbiter).ok_or(Error::NotInitialized)?;
 
-        if caller != client && caller != freelancer {
+        // Role-based access: only the escrow participants (client/freelancer) or the
+        // authorized arbitrator may raise a dispute.
+        if caller != client && caller != freelancer && caller != arbiter {
             return Err(Error::Unauthorized);
         }
 
         let mut milestone: Milestone = env.storage().instance().get(&DataKey::Milestone(milestone_id)).ok_or(Error::MilestoneNotFound)?;
 
-        if milestone.status != MilestoneStatus::Funded
-            && milestone.status != MilestoneStatus::Submitted
+        // A dispute can only be raised after the milestone has been funded and
+        // submitted (Submitted/Approved) - it must not bypass the normal lifecycle.
+        if milestone.status != MilestoneStatus::Submitted
             && milestone.status != MilestoneStatus::Approved
         {
             return Err(Error::InvalidMilestoneStatus);

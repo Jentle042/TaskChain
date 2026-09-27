@@ -612,3 +612,125 @@ fn test_successful_security_events_are_emitted() {
         1
     );
 }
+
+// --- Dispute escrow mechanism edge cases (issue #220) ---
+
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #6)")]
+fn test_dispute_without_funding_fails() {
+    let setup = setup_test();
+    // Milestone is Pending (never funded): a dispute must not bypass escrow funding.
+    initialize_single_milestone(&setup, 150);
+
+    setup.escrow_client.dispute(&1, &setup.client);
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #6)")]
+fn test_dispute_before_submission_fails() {
+    let setup = setup_test();
+    // Funded but not submitted yet: a dispute must not bypass milestone submission.
+    initialize_single_milestone(&setup, 150);
+    setup.escrow_client.fund();
+
+    setup.escrow_client.dispute(&1, &setup.client);
+}
+
+#[test]
+fn test_arbiter_can_raise_dispute() {
+    let setup = setup_test();
+    initialize_single_milestone(&setup, 150);
+    setup.escrow_client.fund();
+    setup.escrow_client.submit_milestone(&1);
+
+    // The authorized arbitrator is allowed to raise a dispute.
+    setup.escrow_client.dispute(&1, &setup.arbiter);
+
+    assert_eq!(
+        setup.escrow_client.get_milestones().get(0).unwrap().status,
+        MilestoneStatus::Disputed
+    );
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #6)")]
+fn test_release_blocked_while_disputed() {
+    let setup = setup_test();
+    initialize_single_milestone(&setup, 150);
+    setup.escrow_client.fund();
+    setup.escrow_client.submit_milestone(&1);
+    setup.escrow_client.approve(&1);
+    setup.escrow_client.dispute(&1, &setup.client);
+
+    // Funds are locked while the dispute is open, even for the client.
+    setup.escrow_client.release(&1, &setup.client);
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #6)")]
+fn test_refund_blocked_while_disputed() {
+    let setup = setup_test();
+    initialize_single_milestone(&setup, 150);
+    setup.escrow_client.fund();
+    setup.escrow_client.submit_milestone(&1);
+    setup.escrow_client.dispute(&1, &setup.freelancer);
+
+    // The freelancer cannot refund out from under an open dispute.
+    setup.escrow_client.refund(&1, &setup.freelancer);
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #6)")]
+fn test_multiple_disputes_rejected() {
+    let setup = setup_test();
+    initialize_single_milestone(&setup, 150);
+    setup.escrow_client.fund();
+    setup.escrow_client.submit_milestone(&1);
+
+    setup.escrow_client.dispute(&1, &setup.client);
+    setup.escrow_client.resolve_dispute(&1, &true);
+
+    // Once resolved, the milestone is terminal: a second dispute is rejected.
+    setup.escrow_client.dispute(&1, &setup.client);
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #6)")]
+fn test_resolve_without_dispute_fails() {
+    let setup = setup_test();
+    initialize_single_milestone(&setup, 150);
+    setup.escrow_client.fund();
+    setup.escrow_client.submit_milestone(&1);
+
+    setup.escrow_client.resolve_dispute(&1, &true);
+}
+
+#[test]
+fn test_dispute_events_are_emitted() {
+    let setup = setup_test();
+    let env = setup.env.clone();
+
+    initialize_single_milestone(&setup, 150);
+    setup.escrow_client.fund();
+    setup.escrow_client.submit_milestone(&1);
+
+    setup.escrow_client.dispute(&1, &setup.client);
+    assert_eq!(
+        env.events()
+            .all()
+            .filter_by_contract(&setup.escrow_client.address)
+            .events()
+            .len(),
+        1
+    );
+
+    setup.escrow_client.resolve_dispute(&1, &true);
+    assert_eq!(
+        env.events()
+            .all()
+            .filter_by_contract(&setup.escrow_client.address)
+            .events()
+            .len(),
+        1
+    );
+}
