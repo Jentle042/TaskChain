@@ -6,14 +6,16 @@ use soroban_sdk::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[contracttype]
 pub enum MilestoneStatus {
-    Pending = 0,
+    Created = 0,
     Funded = 1,
-    Submitted = 2,
-    Approved = 3,
-    Released = 4,
-    Refunded = 5,
-    Disputed = 6,
-    AutoExpired = 7,
+    InProgress = 2,
+    Submitted = 3,
+    Approved = 4,
+    Released = 5,
+    Refunded = 6,
+    Disputed = 7,
+    Resolved = 8,
+    AutoExpired = 9,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -95,6 +97,16 @@ pub struct EscrowFunded {
     #[topic]
     pub actor: Address,
     pub amount: i128,
+}
+
+#[contractevent]
+pub struct MilestoneStarted {
+    #[topic]
+    pub contract_id: Address,
+    #[topic]
+    pub milestone_id: u32,
+    #[topic]
+    pub actor: Address,
 }
 
 #[contractevent]
@@ -276,7 +288,7 @@ impl EscrowContract {
         for i in 0..ids.len() {
             let id = ids.get(i).unwrap();
             let mut milestone: Milestone = env.storage().instance().get(&DataKey::Milestone(id)).ok_or(Error::MilestoneNotFound)?;
-            if milestone.status == MilestoneStatus::Pending {
+            if milestone.status == MilestoneStatus::Created {
                 milestone.status = MilestoneStatus::Funded;
             }
             env.storage().instance().set(&DataKey::Milestone(id), &milestone);
@@ -295,13 +307,36 @@ impl EscrowContract {
         Ok(())
     }
 
-    pub fn submit_milestone(env: Env, milestone_id: u32) -> Result<(), Error> {
+    pub fn start_milestone(env: Env, milestone_id: u32) -> Result<(), Error> {
         let freelancer: Address = env.storage().instance().get(&DataKey::Freelancer).ok_or(Error::NotInitialized)?;
         freelancer.require_auth();
 
         let mut milestone: Milestone = env.storage().instance().get(&DataKey::Milestone(milestone_id)).ok_or(Error::MilestoneNotFound)?;
 
         if milestone.status != MilestoneStatus::Funded {
+            return Err(Error::InvalidMilestoneStatus);
+        }
+
+        milestone.status = MilestoneStatus::InProgress;
+        env.storage().instance().set(&DataKey::Milestone(milestone_id), &milestone);
+
+        MilestoneStarted {
+            contract_id: env.current_contract_address(),
+            milestone_id,
+            actor: freelancer,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    pub fn submit_milestone(env: Env, milestone_id: u32) -> Result<(), Error> {
+        let freelancer: Address = env.storage().instance().get(&DataKey::Freelancer).ok_or(Error::NotInitialized)?;
+        freelancer.require_auth();
+
+        let mut milestone: Milestone = env.storage().instance().get(&DataKey::Milestone(milestone_id)).ok_or(Error::MilestoneNotFound)?;
+
+        if milestone.status != MilestoneStatus::InProgress {
             return Err(Error::InvalidMilestoneStatus);
         }
         if milestone.deadline > 0 && env.ledger().timestamp() > milestone.deadline {
@@ -519,11 +554,7 @@ impl EscrowContract {
         }
 
         let transfer_amount = milestone.amount;
-        milestone.status = if release_to_freelancer {
-            MilestoneStatus::Released
-        } else {
-            MilestoneStatus::Refunded
-        };
+        milestone.status = MilestoneStatus::Resolved;
         env.storage().instance().set(&DataKey::Milestone(milestone_id), &milestone);
 
         let mut balance: i128 = env.storage().instance().get(&DataKey::EscrowBalance).unwrap_or(0);
