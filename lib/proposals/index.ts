@@ -8,7 +8,7 @@
  *   } from '@/lib/proposals'
  */
 
-export { proposalAcceptanceService, ProposalAcceptanceService } from './service'
+export { proposalAcceptanceService, ProposalAcceptanceService } from './acceptance-service'
 export { proposalAcceptanceRepository, ProposalAcceptanceRepository } from './repository'
 
 export type {
@@ -25,7 +25,7 @@ export type {
   AcceptProposalInput,
   AcceptProposalResult,
   IProposalAcceptanceRepository,
-} from './types'
+} from './acceptance-types'
 
 export {
   ProposalAcceptanceError,

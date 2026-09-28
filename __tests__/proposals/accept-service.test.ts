@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { ProposalAcceptanceService } from '@/lib/proposals/service'
+import { ProposalAcceptanceService } from '@/lib/proposals/acceptance-service'
 import type {
   AcceptProposalResult,
   ContractRecord,
@@ -7,7 +7,7 @@ import type {
   JobRecord,
   ProposalMilestoneBreakdown,
   ProposalRecord,
-} from '@/lib/proposals/types'
+} from '@/lib/proposals/acceptance-types'
 import {
   ProposalAlreadyAcceptedError,
   ContractAlreadyExistsError,

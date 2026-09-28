@@ -13,7 +13,7 @@ import type {
   MilestoneRecord,
   ProposalMilestoneBreakdown,
   ProposalRecord,
-} from './types'
+} from './acceptance-types'
 import { ProposalTransactionError } from './errors'
 
 type SqlTxn = typeof sql
